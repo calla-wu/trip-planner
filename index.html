@@ -153,12 +153,7 @@ function renderDay(){
   const day=cur.days[dayIdx];
   if(!day){$("day").innerHTML='<div class="empty">沒有資料</div>';return}
   document.querySelectorAll(".tab").forEach((el,i)=>{el.classList.toggle("active",i===dayIdx);if(i===dayIdx)el.scrollIntoView({inline:"center",block:"nearest"})});
-  const uniq=[...new Set(day.items.filter(i=>i.mapQuery).map(i=>i.mapQuery))];
-  const dirUrl=uniq.length>1?`https://www.google.com/maps/dir/${uniq.map(encodeURIComponent).join("/")}`:null;
-  const dayTotal=day.items.reduce((a,i)=>{a.twd+=i.cost?.twd||0;a.usd+=i.cost?.usd||0;return a},{twd:0,usd:0});
-  $("day").innerHTML=`<div class="daytitle"><h2>D${dayIdx+1}・${day.date}（${esc(day.week)}）${esc(day.title)}</h2>
-    ${dirUrl?`<a class="btn" href="${dirUrl}" target="_blank" rel="noopener">🗺 當日路線</a>`:""}</div>
-    ${costTxt(dayTotal)?`<div class="note" style="margin-bottom:8px">當日花費：${costTxt(dayTotal)}</div>`:""}
+  $("day").innerHTML=`<div class="daytitle"><h2>D${dayIdx+1}・${day.date}（${esc(day.week)}）${esc(day.title)}</h2></div>
     <ul class="timeline">${day.items.map((it,i)=>{
       const [ic,label,color]=TYPES[it.type]||TYPES.other;
       const links=[...(it.links||[])];
