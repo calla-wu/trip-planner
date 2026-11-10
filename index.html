@@ -89,7 +89,8 @@ const COVERS = {"馬爾地夫":"maldives.jpg"};   // 行程標題含關鍵字 �
 const Q = new URLSearchParams(location.search);
 const SHARE = Q.get("t");              // 專屬分享連結：只載入這一個行程
 const FROM_HOME = Q.get("h") === "1";  // 從首頁點進來才顯示「全部行程」
-const CACHE_KEY = "trip-planner-cache-v2-" + (SHARE || "all");
+const CACHE_KEY = "trip-planner-cache-v3-" + (SHARE || "all");
+const SYNC_MS = 24 * 3600 * 1000;      // 每天自動同步一次；按右上角 ⟳ 可立即同步
 const COLORS = ["linear-gradient(135deg,#06b6d4,#3b82f6)","linear-gradient(135deg,#f97316,#ec4899)","linear-gradient(135deg,#10b981,#0ea5e9)","linear-gradient(135deg,#8b5cf6,#ec4899)"];
 
 let TRIPS = [];
@@ -185,10 +186,10 @@ $("shareBtn").onclick=async()=>{
   try{await navigator.clipboard.writeText(url);$("shareBtn").textContent="✅ 已複製";setTimeout(()=>$("shareBtn").textContent="🔗 分享",1800)}catch(e){prompt("複製這個連結分享：",url)}
 };
 
-function apply(data,fromNet){
+function apply(data,label,at){
   if(!data||!data.trips)return;
   TRIPS=data.trips;
-  $("updated").textContent=(fromNet?"已同步 ":"離線資料 ")+new Date(data.updated||Date.now()).toLocaleString("zh-TW",{hour12:false});
+  $("updated").textContent=label+" "+new Date(at||data.updated||Date.now()).toLocaleString("zh-TW",{hour12:false})+"（每天自動同步一次，可按 ⟳ 立即更新）";
   if(cur){const keep=cur.id;TRIPS.find(t=>t.id===keep)?openTrip(keep,true):goHome()}
   else if(SHARE){
     if(TRIPS.length)openTrip(TRIPS[0].id);
@@ -196,19 +197,30 @@ function apply(data,fromNet){
   }
   else renderHome();
 }
-async function load(){
-  const cached=safeGet(CACHE_KEY);
-  if(!TRIPS.length&&cached){try{apply(JSON.parse(cached),false)}catch(e){}}
-  if(!TRIPS.length)$("tripList").innerHTML='<div class="empty">載入中…</div>';
+async function load(force){
+  let cached=null;
+  try{cached=JSON.parse(safeGet(CACHE_KEY)||"null")}catch(e){}
+  if(cached&&cached.data&&!TRIPS.length)apply(cached.data,"上次同步",cached.at);
+  const fresh=cached&&cached.data&&Date.now()-cached.at<SYNC_MS;
+  if(!force&&fresh)return;                       // 24 小時內不重抓
   if(!API_URL||API_URL.startsWith("__"))return;
+  if(!TRIPS.length)$("tripList").innerHTML='<div class="empty">載入中…</div>';
   try{
     const r=await fetch(API_URL+(SHARE?"?t="+encodeURIComponent(SHARE):""),{cache:"no-store"});
     const data=await r.json();
-    if(data&&data.trips){if(data.trips.length)safeSet(CACHE_KEY,JSON.stringify(data));apply(data,true)}
-  }catch(e){console.warn("sync failed",e);if(!TRIPS.length)$("tripList").innerHTML='<div class="empty">無法載入行程，請確認網路後按右上角 ⟳ 重試</div>'}
+    if(data&&data.trips){const at=Date.now();if(data.trips.length)safeSet(CACHE_KEY,JSON.stringify({at,data}));apply(data,"已同步",at)}
+  }catch(e){
+    console.warn("sync failed",e);
+    if(!TRIPS.length)$("tripList").innerHTML='<div class="empty">無法載入行程，請確認網路後按右上角 ⟳ 重試</div>';
+  }
 }
-$("refresh").onclick=load;
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)load()});
+$("refresh").onclick=()=>load(true);
+let renderedDay=todayIso();
+document.addEventListener("visibilitychange",()=>{      // 只在跨日時重畫（更新「今天」），不重新抓資料
+  if(document.hidden||renderedDay===todayIso())return;
+  renderedDay=todayIso();
+  if(cur){const keep=cur.id;cur=null;openTrip(keep)}else if(!SHARE)renderHome();
+});
 load();
 
 </script>
