@@ -223,22 +223,39 @@ function apply(data,label,at){
   }
   else renderHome();
 }
+function readCache(key){try{return JSON.parse(safeGet(key)||"null")}catch(e){return null}}
+function cacheKeyOf(slug){return "trip-planner-cache-v3-"+slug}
 async function load(force){
-  let cached=null;
-  try{cached=JSON.parse(safeGet(CACHE_KEY)||"null")}catch(e){}
+  let cached=readCache(CACHE_KEY);
+  // 打開單一行程時，若首頁（全部行程）已經抓過，直接用那份，不必再等後端
+  if(SHARE&&!(cached&&cached.data)){
+    const all=readCache("trip-planner-cache-v3-all");
+    const t=all&&all.data&&all.data.trips&&all.data.trips.find(x=>x.id===SHARE);
+    if(t)cached={at:all.at,data:{updated:all.data.updated,trips:[t]}};
+  }
   if(cached&&cached.data&&!TRIPS.length)apply(cached.data,"上次同步",cached.at);
   const fresh=cached&&cached.data&&Date.now()-cached.at<SYNC_MS;
   if(!force&&fresh)return;                       // 24 小時內不重抓
   if(!API_URL||API_URL.startsWith("__"))return;
-  if(!TRIPS.length)$("tripList").innerHTML='<div class="empty">載入中…</div>';
+  if(!TRIPS.length)$("tripList").innerHTML='<div class="empty">載入中…第一次開啟需要幾秒，之後會記住 ✓</div>';
+  if(force)$("refresh").textContent="…";
   try{
-    const r=await fetch(API_URL+(SHARE?"?t="+encodeURIComponent(SHARE):""),{cache:"no-store"});
+    const qs=[];if(SHARE)qs.push("t="+encodeURIComponent(SHARE));if(force)qs.push("refresh=1");
+    const r=await fetch(API_URL+(qs.length?"?"+qs.join("&"):""),{cache:"no-store"});
     const data=await r.json();
-    if(data&&data.trips){const at=Date.now();if(data.trips.length)safeSet(CACHE_KEY,JSON.stringify({at,data}));apply(data,"已同步",at)}
+    if(data&&data.trips){
+      const at=Date.now();
+      if(data.trips.length){
+        safeSet(CACHE_KEY,JSON.stringify({at,data}));
+        if(!SHARE)data.trips.forEach(t=>safeSet(cacheKeyOf(t.id),JSON.stringify({at,data:{updated:data.updated,trips:[t]}})));   // 每個行程各存一份，點進去就是即時的
+      }
+      apply(data,"已同步",at);
+    }
   }catch(e){
     console.warn("sync failed",e);
     if(!TRIPS.length)$("tripList").innerHTML='<div class="empty">無法載入行程，請確認網路後按右上角 ⟳ 重試</div>';
   }
+  $("refresh").textContent="⟳";
 }
 $("refresh").onclick=()=>load(true);
 let renderedDay=todayIso();
