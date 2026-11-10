@@ -120,7 +120,7 @@ function renderHome(){
     const ck=Object.keys(COVERS).find(k=>t.title.includes(k));
     let cv=t.cover||(ck?COVERS[ck]:"");
     if(cv&&!/^https:\/\//i.test(cv)&&!/^[\w.\/-]+$/.test(cv))cv="";   // 只接受 https 或同站檔案
-    const bg=cv?`linear-gradient(180deg,rgba(0,0,0,0) 35%,rgba(0,0,0,.55)),url("${encodeURI(cv).replace(/["()]/g,"")}")`:COLORS[i%COLORS.length];
+    const bg=cv?`linear-gradient(180deg,rgba(0,0,0,0) 35%,rgba(0,0,0,.55)),url('${encodeURI(cv).replace(/["'()]/g,"")}')`:COLORS[i%COLORS.length];
     return `<div class="trip-card" data-id="${esc(t.id)}"><div class="trip-cover" style="background-image:${bg}">${esc(t.title)}</div>
     <div class="trip-body">${d.length?`${d[0].date} – ${d[d.length-1].date}・${d.length} 天`:""}<br>
     ${t.totalTwd?`<span class="chip">預估 NT$${fmt(t.totalTwd)}</span>`:""}${badge}</div></div>`}).join("")||'<div class="empty">還沒有行程</div>';
