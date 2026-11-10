@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>我的旅程 Trip Planner</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--text:#1f2933;--muted:#6b7785;--line:#dde3e9;--brand:#0ea5a4;--brand-d:#0b7f7e;
+--flight:#6366f1;--transport:#f59e0b;--stay:#8b5cf6;--food:#ef4444;--activity:#10b981;--dive:#0284c7;--other:#64748b}
+@media(prefers-color-scheme:dark){:root{--bg:#12171c;--card:#1b222a;--text:#e8edf2;--muted:#93a1b0;--line:#2c3641}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,"PingFang TC","Noto Sans TC",sans-serif}
+a{color:var(--brand-d)}
+header{position:sticky;top:0;z-index:20;background:var(--brand);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
+header h1{font-size:17px;margin:0;flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
+header h1.link{cursor:pointer}
+header button{flex:none;white-space:nowrap;background:rgba(255,255,255,.2);border:0;color:#fff;padding:6px 12px;border-radius:999px;cursor:pointer;font-size:14px;line-height:1.2}
+.foot{text-align:center;color:var(--muted);font-size:11px;padding:16px}
+main{max-width:1200px;margin:0 auto;padding:16px}
+.hidden{display:none!important}
+/* home */
+.trips{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.trip-card{background:var(--card);border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);cursor:pointer;transition:.15s}
+.trip-card:hover{transform:translateY(-3px)}
+.trip-cover{height:170px;display:flex;align-items:flex-end;padding:14px;color:#fff;font-size:22px;font-weight:700;background-size:cover;background-position:center;text-shadow:0 1px 6px rgba(0,0,0,.6)}
+.trip-body{padding:12px 14px;color:var(--muted);font-size:14px}
+.chip{display:inline-block;background:var(--bg);border-radius:999px;padding:2px 10px;margin:2px 4px 2px 0;font-size:12px;color:var(--muted)}
+/* trip */
+.summary{background:var(--card);border-radius:16px;padding:16px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.summary h2{margin:0 0 4px}
+.stats{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}
+.stat{flex:1 1 120px;background:var(--bg);border-radius:12px;padding:10px 12px}
+.stat b{display:block;font-size:20px}.stat span{font-size:12px;color:var(--muted)}
+.prep li{margin:4px 0}
+.tabs{display:flex;gap:8px;overflow-x:auto;padding:4px 0 12px;position:sticky;top:50px;background:var(--bg);z-index:10;scrollbar-width:thin}
+.tab{flex:0 0 auto;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:6px 12px;cursor:pointer;text-align:center;min-width:72px}
+.tab small{display:block;color:var(--muted);font-size:11px}
+.tab.active{background:var(--brand);color:#fff;border-color:var(--brand)}.tab.active small{color:#e0fffe}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media(max-width:820px){.layout{grid-template-columns:1fr}.mapbox{order:-1;position:sticky!important;top:104px!important;height:200px!important;z-index:9}.summary .stats{display:grid;grid-template-columns:1fr 1fr}}
+.daytitle{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.daytitle h2{margin:0;font-size:20px}
+.btn{display:inline-block;border:1px solid var(--brand);color:var(--brand-d);border-radius:999px;padding:4px 12px;font-size:13px;text-decoration:none;background:transparent;cursor:pointer}
+.timeline{position:relative;margin:0;padding:0;list-style:none}
+.timeline:before{content:"";position:absolute;left:62px;top:8px;bottom:8px;width:2px;background:var(--line)}
+.item{display:flex;gap:10px;margin-bottom:12px;position:relative}
+.time{width:46px;text-align:right;font-weight:600;font-size:13px;padding-top:12px;color:var(--muted);flex:none}
+.dot{width:32px;height:32px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;z-index:1;margin-top:6px;box-shadow:0 0 0 4px var(--bg)}
+.card{flex:1;background:var(--card);border-radius:12px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.07);border-left:4px solid var(--c);cursor:pointer;min-width:0}
+.card.sel{outline:2px solid var(--brand)}
+.card h3{margin:0;font-size:15px;display:flex;justify-content:space-between;gap:8px}
+.card .cost{font-weight:600;font-size:13px;color:var(--muted);white-space:nowrap}
+.note{color:var(--muted);font-size:13px;white-space:pre-line;margin-top:2px}
+.links{margin-top:6px;display:flex;flex-wrap:wrap;gap:6px}
+.links a{font-size:12px;background:var(--bg);padding:3px 10px;border-radius:999px;text-decoration:none;word-break:break-all}
+.tag{font-size:11px;color:#fff;background:var(--c);border-radius:6px;padding:0 6px;margin-right:6px}
+.mapbox{position:sticky;top:110px;height:calc(100vh - 140px);background:var(--card);border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.mapbox iframe{width:100%;height:100%;border:0}
+.maptitle{position:absolute;left:8px;top:8px;background:var(--card);border-radius:8px;padding:2px 10px;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.2);pointer-events:none}
+.empty{color:var(--muted);text-align:center;padding:24px}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="logo">🧳 我的旅程</h1>
+  <button id="shareBtn" class="hidden">🔗 分享</button>
+  <button id="refresh" title="重新同步">⟳</button>
+  <button id="homeBtn" class="hidden">← 全部</button>
+</header>
+<main>
+  <section id="home"><h2 style="margin-top:0">全部行程</h2><div class="trips" id="tripList"></div></section>
+  <section id="trip" class="hidden">
+    <div class="summary" id="summary"></div>
+    <div class="tabs" id="tabs"></div>
+    <div class="layout">
+      <div id="day"></div>
+      <div class="mapbox" id="mapbox"><div class="maptitle" id="maptitle"></div><iframe id="map" loading="lazy" allowfullscreen></iframe></div>
+    </div>
+  </section>
+</main>
+<div class="foot" id="updated"></div>
+
+<script>
+/* ===== 設定 =====
+   API_URL：Google Apps Script Web App 網址（由 Sheet 綁定的 script 部署而來）。
+   行程內容全部來自 Google Sheet；網頁每次開啟都會抓最新資料，抓不到時使用上次快取 / 內建快照。 */
+const API_URL = "https://script.google.com/macros/s/AKfycbyQdLYmfzNFlFzSxIQYkhgyhZPGIwZ_uNdt2EjeOECAOCQieE2lj4Cw3uYCyibIclBr/exec";
+const COVERS = {"馬爾地夫":"maldives.jpg"};   // 行程標題含關鍵字 → 封面圖
+const Q = new URLSearchParams(location.search);
+const SHARE = Q.get("t");              // 專屬分享連結：只載入這一個行程
+const FROM_HOME = Q.get("h") === "1";  // 從首頁點進來才顯示「全部行程」
+const CACHE_KEY = "trip-planner-cache-v2-" + (SHARE || "all");
+const COLORS = ["linear-gradient(135deg,#06b6d4,#3b82f6)","linear-gradient(135deg,#f97316,#ec4899)","linear-gradient(135deg,#10b981,#0ea5e9)","linear-gradient(135deg,#8b5cf6,#ec4899)"];
+
+let TRIPS = [];
+const TYPES={flight:["✈️","交通","#6366f1"],transport:["⛴️","交通","#f59e0b"],stay:["🏨","住宿","#8b5cf6"],food:["🍽️","餐飲","#ef4444"],activity:["📍","景點","#10b981"],dive:["🤿","潛水","#0284c7"],other:["•","其他","#64748b"]};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const mapEmbed=q=>`https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed&hl=zh-TW`;
+const mapLink=q=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+const fmt=n=>Math.round(n).toLocaleString();
+const costTxt=c=>!c?"":[c.usd?`US$${fmt(c.usd)}`:"",c.twd?`NT$${fmt(c.twd)}`:""].filter(Boolean).join(" + ");
+const todayIso=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
+const safeGet=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+const safeSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+
+let cur=null,dayIdx=0;
+
+function tripState(t){
+  const d=t.days,td=todayIso();
+  if(!d.length)return"";
+  if(td<d[0].iso)return"before";
+  if(td>d[d.length-1].iso)return"after";
+  return"now";
+}
+function renderHome(){
+  $("tripList").innerHTML=TRIPS.map((t,i)=>{
+    const d=t.days,st=tripState(t);
+    const badge=st==="now"?'<span class="chip" style="background:#10b981;color:#fff">進行中</span>':st==="before"?'<span class="chip">尚未出發</span>':'<span class="chip">已結束</span>';
+    const ck=Object.keys(COVERS).find(k=>t.title.includes(k));
+    let cv=t.cover||(ck?COVERS[ck]:"");
+    if(cv&&!/^https:\/\//i.test(cv)&&!/^[\w.\/-]+$/.test(cv))cv="";   // 只接受 https 或同站檔案
+    const bg=cv?`linear-gradient(180deg,rgba(0,0,0,0) 35%,rgba(0,0,0,.55)),url("${encodeURI(cv).replace(/["()]/g,"")}")`:COLORS[i%COLORS.length];
+    return `<div class="trip-card" data-id="${esc(t.id)}"><div class="trip-cover" style="background-image:${bg}">${esc(t.title)}</div>
+    <div class="trip-body">${d.length?`${d[0].date} – ${d[d.length-1].date}・${d.length} 天`:""}<br>
+    ${t.totalTwd?`<span class="chip">預估 NT$${fmt(t.totalTwd)}</span>`:""}${badge}</div></div>`}).join("")||'<div class="empty">還沒有行程</div>';
+  document.querySelectorAll(".trip-card").forEach(el=>el.onclick=()=>{location.href=location.pathname+"?t="+encodeURIComponent(el.dataset.id)+"&h=1"});
+}
+function openTrip(id,keepDay){
+  cur=TRIPS.find(t=>t.id===id);if(!cur)return;
+  if(!keepDay){
+    const i=cur.days.findIndex(x=>x.iso===todayIso());
+    dayIdx=i>=0?i:0;               // 到了當天就直接顯示當天
+  }
+  $("shareBtn").classList.remove("hidden");
+  $("home").classList.add("hidden");$("trip").classList.remove("hidden");$("homeBtn").classList.toggle("hidden",!(FROM_HOME||!SHARE));
+  const t=cur,d=t.days;
+  $("summary").innerHTML=`<details id="sumd"><summary style="cursor:pointer;list-style:none"><h2 style="display:inline">${esc(t.title)}</h2> <span class="chip">總表 ▾</span></summary>
+   <div class="stats">
+    <div class="stat"><b>${d.length?`${d[0].date}–${d[d.length-1].date}`:"-"}</b><span>日期（共 ${d.length} 天）</span></div>
+    ${t.totalTwd?`<div class="stat"><b>NT$${fmt(t.totalTwd)}</b><span>預估總金額</span></div>`:""}
+    ${t.rate?`<div class="stat"><b>${t.rate}</b><span>${esc(t.rateNote||"匯率")}</span></div>`:""}
+   </div>
+   ${t.prep&&t.prep.length?`<b>出發前準備</b><ul class="prep">${t.prep.map(p=>`<li>${p.icon||"📌"} <b>${esc(p.title)}</b>${p.note?`<div class="note">${esc(p.note)}</div>`:""}
+    ${(p.links||[]).map(l=>`<div class="links"><a href="${esc(l.url)}" target="_blank" rel="noopener">🔗 ${esc(l.label)}</a></div>`).join("")}</li>`).join("")}</ul>`:""}</details>`;
+  $("sumd").open=innerWidth>820;
+  const td=todayIso();
+  $("tabs").innerHTML=d.map((x,i)=>`<button class="tab" data-i="${i}">D${i+1}<small>${x.date}（${esc(x.week)}）</small>${x.iso===td?'<small style="color:#10b981;font-weight:700">今天</small>':""}</button>`).join("");
+  document.querySelectorAll(".tab").forEach(el=>el.onclick=()=>{dayIdx=+el.dataset.i;renderDay()});
+  renderDay();if(!keepDay)window.scrollTo(0,0);
+}
+function renderDay(){
+  const day=cur.days[dayIdx];
+  if(!day){$("day").innerHTML='<div class="empty">沒有資料</div>';return}
+  document.querySelectorAll(".tab").forEach((el,i)=>{el.classList.toggle("active",i===dayIdx);if(i===dayIdx)el.scrollIntoView({inline:"center",block:"nearest"})});
+  const uniq=[...new Set(day.items.filter(i=>i.mapQuery).map(i=>i.mapQuery))];
+  const dirUrl=uniq.length>1?`https://www.google.com/maps/dir/${uniq.map(encodeURIComponent).join("/")}`:null;
+  const dayTotal=day.items.reduce((a,i)=>{a.twd+=i.cost?.twd||0;a.usd+=i.cost?.usd||0;return a},{twd:0,usd:0});
+  $("day").innerHTML=`<div class="daytitle"><h2>D${dayIdx+1}・${day.date}（${esc(day.week)}）${esc(day.title)}</h2>
+    ${dirUrl?`<a class="btn" href="${dirUrl}" target="_blank" rel="noopener">🗺 當日路線</a>`:""}</div>
+    ${costTxt(dayTotal)?`<div class="note" style="margin-bottom:8px">當日花費：${costTxt(dayTotal)}</div>`:""}
+    <ul class="timeline">${day.items.map((it,i)=>{
+      const [ic,label,color]=TYPES[it.type]||TYPES.other;
+      const links=[...(it.links||[])];
+      if(it.mapUrl||it.mapQuery)links.push({label:"在 Google Maps 開啟",url:it.mapUrl||mapLink(it.mapQuery),map:1});
+      return `<li class="item"><div class="time">${esc(it.time||"")}</div>
+       <div class="dot" style="background:${color}">${ic}</div>
+       <div class="card" style="--c:${color}" data-i="${i}">
+        <h3><span><span class="tag">${label}</span>${esc(it.title)}</span><span class="cost">${costTxt(it.cost)}</span></h3>
+        ${it.note?`<div class="note">${esc(it.note)}</div>`:""}
+        ${links.length?`<div class="links">${links.map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${l.map?"📍":"🔗"} ${esc(l.label)}</a>`).join("")}</div>`:""}
+       </div></li>`}).join("")}</ul>`;
+  document.querySelectorAll(".card").forEach(el=>el.onclick=()=>selectItem(+el.dataset.i));
+  const first=day.items.findIndex(i=>i.mapQuery);
+  first>=0?selectItem(first):($("map").src="about:blank",$("maptitle").textContent="");
+}
+function selectItem(i){
+  const it=cur.days[dayIdx].items[i];
+  document.querySelectorAll(".card").forEach((el,k)=>el.classList.toggle("sel",k===i));
+  if(!it.mapQuery)return;
+  $("maptitle").textContent="📍 "+it.title;
+  $("map").src=mapEmbed(it.mapQuery);
+}
+function goHome(){location.href=location.pathname}
+$("homeBtn").onclick=goHome;
+if(!SHARE||FROM_HOME){$("logo").classList.add("link");$("logo").onclick=goHome}
+$("shareBtn").onclick=async()=>{
+  const url=location.origin+location.pathname+"?t="+encodeURIComponent(cur.id);
+  try{if(navigator.share){await navigator.share({title:cur.title,url});return}}catch(e){if(e&&e.name==="AbortError")return}
+  try{await navigator.clipboard.writeText(url);$("shareBtn").textContent="✅ 已複製";setTimeout(()=>$("shareBtn").textContent="🔗 分享",1800)}catch(e){prompt("複製這個連結分享：",url)}
+};
+
+function apply(data,fromNet){
+  if(!data||!data.trips)return;
+  TRIPS=data.trips;
+  $("updated").textContent=(fromNet?"已同步 ":"離線資料 ")+new Date(data.updated||Date.now()).toLocaleString("zh-TW",{hour12:false});
+  if(cur){const keep=cur.id;TRIPS.find(t=>t.id===keep)?openTrip(keep,true):goHome()}
+  else if(SHARE){
+    if(TRIPS.length)openTrip(TRIPS[0].id);
+    else{$("home").classList.remove("hidden");$("tripList").innerHTML='<div class="empty">找不到這個行程，連結可能已失效</div>'}
+  }
+  else renderHome();
+}
+async function load(){
+  const cached=safeGet(CACHE_KEY);
+  if(!TRIPS.length&&cached){try{apply(JSON.parse(cached),false)}catch(e){}}
+  if(!TRIPS.length)$("tripList").innerHTML='<div class="empty">載入中…</div>';
+  if(!API_URL||API_URL.startsWith("__"))return;
+  try{
+    const r=await fetch(API_URL+(SHARE?"?t="+encodeURIComponent(SHARE):""),{cache:"no-store"});
+    const data=await r.json();
+    if(data&&data.trips){if(data.trips.length)safeSet(CACHE_KEY,JSON.stringify(data));apply(data,true)}
+  }catch(e){console.warn("sync failed",e);if(!TRIPS.length)$("tripList").innerHTML='<div class="empty">無法載入行程，請確認網路後按右上角 ⟳ 重試</div>'}
+}
+$("refresh").onclick=load;
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)load()});
+load();
+
+</script>
+</body>
+</html>
