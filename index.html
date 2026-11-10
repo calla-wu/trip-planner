@@ -57,6 +57,7 @@ main{max-width:1200px;margin:0 auto;padding:16px}
 .tag{font-size:11px;color:#fff;background:var(--c);border-radius:6px;padding:0 6px;margin-right:6px}
 .mapbox{position:sticky;top:110px;height:calc(100vh - 140px);background:var(--card);border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.1)}
 .mapbox iframe{width:100%;height:100%;border:0}
+.maplink{position:absolute;left:8px;bottom:26px;background:var(--brand);color:#fff!important;border-radius:999px;padding:6px 12px;font-size:12px;text-decoration:none;box-shadow:0 1px 6px rgba(0,0,0,.35);z-index:2}
 .maptitle{position:absolute;left:8px;top:8px;background:var(--card);border-radius:8px;padding:2px 10px;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.2);pointer-events:none}
 .empty{color:var(--muted);text-align:center;padding:24px}
 </style>
@@ -76,7 +77,7 @@ main{max-width:1200px;margin:0 auto;padding:16px}
     <div class="tabs" id="tabs"></div>
     <div class="layout">
       <div id="day"></div>
-      <div class="mapbox" id="mapbox"><div class="maptitle" id="maptitle"></div><iframe id="map" loading="lazy" allowfullscreen></iframe></div>
+      <div class="mapbox" id="mapbox"><div class="maptitle" id="maptitle"></div><a class="maplink hidden" id="maplink" target="_blank" rel="noopener"></a><iframe id="map" loading="lazy" allowfullscreen></iframe></div>
     </div>
   </section>
 </main>
@@ -190,7 +191,14 @@ function renderDay(){
 function selectItem(i){
   const it=cur.days[dayIdx].items[i];
   document.querySelectorAll(".card").forEach((el,k)=>el.classList.toggle("sel",k===i));
-  if(it.route){$("maptitle").textContent="🧭 "+it.route.fromName+" → "+it.route.toName;$("map").src=routeEmbed(it.route);return}
+  const ml=$("maplink");
+  if(it.route){
+    $("maptitle").textContent="🧭 "+it.route.fromName+" → "+it.route.toName;
+    $("map").src=routeEmbed(it.route);
+    ml.textContent={walking:"🚶 在 Google 地圖查看步行路線 ↗",driving:"🚗 在 Google 地圖查看開車路線 ↗"}[it.route.mode]||"🚌 在 Google 地圖查看大眾運輸路線與時間 ↗";
+    ml.href=routeLink(it.route);ml.classList.remove("hidden");return;
+  }
+  ml.classList.add("hidden");
   if(!it.mapQuery)return;
   $("maptitle").textContent="📍 "+it.title;
   $("map").src=mapEmbed(it.mapQuery);
