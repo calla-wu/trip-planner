@@ -100,6 +100,10 @@ const TYPES={flight:["✈️","交通","#8b5cf6"],transport:["🚆","交通","#8
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const mapEmbed=q=>`https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed&hl=zh-TW`;
+const routeMode=m=>m==="walking"?"w":m==="driving"?"d":"r";
+const routeEmbed=r=>`https://www.google.com/maps?saddr=${encodeURIComponent(r.from)}&daddr=${encodeURIComponent(r.to)}&dirflg=${routeMode(r.mode)}&output=embed&hl=zh-TW`;
+const routeLink=r=>`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(r.from)}&destination=${encodeURIComponent(r.to)}&travelmode=${r.mode}`;
+const linkLabel=l=>{const t=String(l.label||"");if(/^https?:\/\//i.test(t)){try{return new URL(t).hostname.replace(/^www\./,"")}catch(e){}}return t.length>40?t.slice(0,40)+"…":t};
 const mapLink=q=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 const fmt=n=>Math.round(n).toLocaleString();
 const costTxt=c=>!c?"":[...(c.fx||[]).map(f=>`${f.s}${fmt(f.n)}`),c.usd?`US$${fmt(c.usd)}`:"",c.twd?`NT$${fmt(c.twd)}`:""].filter(Boolean).join(" + ");
@@ -170,21 +174,23 @@ function renderDay(){
     <ul class="timeline">${day.items.map((it,i)=>{
       const [ic,label,color,tagTxt]=TYPES[it.type]||TYPES.other;
       const links=[...(it.links||[])];
-      if(it.mapUrl||it.mapQuery)links.push({label:"在 Google Maps 開啟",url:it.mapUrl||mapLink(it.mapQuery),map:1});
+      if(it.route)links.unshift({label:`${it.route.fromName} → ${it.route.toName}（Google 地圖交通路線）`,url:routeLink(it.route),route:1});
+      else if(it.mapUrl||it.mapQuery)links.push({label:"在 Google Maps 開啟",url:it.mapUrl||mapLink(it.mapQuery),map:1});
       return `<li class="item"><div class="time">${esc(it.time||"")}</div>
        <div class="dot" style="background:${color}">${it.icon?esc(it.icon):ic}</div>
        <div class="card" style="--c:${color}" data-i="${i}">
         <h3><span><span class="tag"${tagTxt?` style="color:${tagTxt}"`:""}>${label}</span>${esc(it.title)}</span><span class="cost">${costTxt(it.cost)}</span></h3>
         ${it.note?`<div class="note">${esc(it.note)}</div>`:""}
-        ${links.length?`<div class="links">${links.map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${l.map?"📍":"🔗"} ${esc(l.label)}</a>`).join("")}</div>`:""}
+        ${links.length?`<div class="links">${links.map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${l.route?"🧭":l.map?"📍":"🔗"} ${esc(l.route||l.map?l.label:linkLabel(l))}</a>`).join("")}</div>`:""}
        </div></li>`}).join("")}</ul>`;
   document.querySelectorAll(".card").forEach(el=>el.onclick=()=>selectItem(+el.dataset.i));
-  const first=day.items.findIndex(i=>i.mapQuery);
+  const first=day.items.findIndex(i=>i.mapQuery||i.route);
   first>=0?selectItem(first):($("map").src="about:blank",$("maptitle").textContent="");
 }
 function selectItem(i){
   const it=cur.days[dayIdx].items[i];
   document.querySelectorAll(".card").forEach((el,k)=>el.classList.toggle("sel",k===i));
+  if(it.route){$("maptitle").textContent="🧭 "+it.route.fromName+" → "+it.route.toName;$("map").src=routeEmbed(it.route);return}
   if(!it.mapQuery)return;
   $("maptitle").textContent="📍 "+it.title;
   $("map").src=mapEmbed(it.mapQuery);
