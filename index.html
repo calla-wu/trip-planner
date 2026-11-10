@@ -159,7 +159,7 @@ function renderDay(){
       const links=[...(it.links||[])];
       if(it.mapUrl||it.mapQuery)links.push({label:"在 Google Maps 開啟",url:it.mapUrl||mapLink(it.mapQuery),map:1});
       return `<li class="item"><div class="time">${esc(it.time||"")}</div>
-       <div class="dot" style="background:${color}">${ic}</div>
+       <div class="dot" style="background:${color}">${it.icon?esc(it.icon):ic}</div>
        <div class="card" style="--c:${color}" data-i="${i}">
         <h3><span><span class="tag">${label}</span>${esc(it.title)}</span><span class="cost">${costTxt(it.cost)}</span></h3>
         ${it.note?`<div class="note">${esc(it.note)}</div>`:""}
