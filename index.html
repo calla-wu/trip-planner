@@ -22,6 +22,7 @@ main{max-width:1200px;margin:0 auto;padding:16px}
 .trips{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
 .trip-card{background:var(--card);border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);cursor:pointer;transition:.15s}
 .trip-card:hover{transform:translateY(-3px)}
+.trip-card.done{opacity:.72;filter:grayscale(.35)}
 .trip-cover{height:170px;display:flex;align-items:flex-end;padding:14px;color:#fff;font-size:22px;font-weight:700;background-size:cover;background-position:center;text-shadow:0 1px 6px rgba(0,0,0,.6)}
 .trip-body{padding:12px 14px;color:var(--muted);font-size:14px}
 .chip{display:inline-block;background:var(--bg);border-radius:999px;padding:2px 10px;margin:2px 4px 2px 0;font-size:12px;color:var(--muted)}
@@ -68,7 +69,8 @@ main{max-width:1200px;margin:0 auto;padding:16px}
   <button id="homeBtn" class="hidden">← 全部</button>
 </header>
 <main>
-  <section id="home"><h2 style="margin-top:0">全部行程</h2><div class="trips" id="tripList"></div></section>
+  <section id="home"><h2 style="margin-top:0">我的行程</h2><div class="trips" id="tripList"></div>
+    <h2 id="doneTitle" class="hidden" style="margin-top:28px">已完成</h2><div class="trips" id="doneList"></div></section>
   <section id="trip" class="hidden">
     <div class="summary" id="summary"></div>
     <div class="tabs" id="tabs"></div>
@@ -94,7 +96,7 @@ const SYNC_MS = 24 * 3600 * 1000;      // 每天自動同步一次；按右上�
 const COLORS = ["linear-gradient(135deg,#06b6d4,#3b82f6)","linear-gradient(135deg,#f97316,#ec4899)","linear-gradient(135deg,#10b981,#0ea5e9)","linear-gradient(135deg,#8b5cf6,#ec4899)"];
 
 let TRIPS = [];
-const TYPES={flight:["✈️","交通","#8b5cf6"],transport:["⛴️","交通","#8b5cf6"],stay:["🏨","住宿","#22c55e"],food:["🍽️","餐飲","#f9a8d4","#831843"],activity:["📍","景點","#f97316"],dive:["🤿","潛水","#0284c7"],other:["•","其他","#64748b"]};  // [icon, 標籤, 顏色, 標籤文字色(選填)]
+const TYPES={flight:["✈️","交通","#8b5cf6"],transport:["🚆","交通","#8b5cf6"],todo:["📝","待辦","#ef4444"],stay:["🏨","住宿","#22c55e"],food:["🍽️","餐飲","#f9a8d4","#831843"],activity:["📍","景點","#f97316"],dive:["🤿","潛水","#0284c7"],other:["•","其他","#64748b"]};  // [icon, 標籤, 顏色, 標籤文字色(選填)]
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const mapEmbed=q=>`https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed&hl=zh-TW`;
@@ -114,17 +116,27 @@ function tripState(t){
   if(td>d[d.length-1].iso)return"after";
   return"now";
 }
-function renderHome(){
-  $("tripList").innerHTML=TRIPS.map((t,i)=>{
-    const d=t.days,st=tripState(t);
-    const badge=st==="now"?'<span class="chip" style="background:#10b981;color:#fff">進行中</span>':st==="before"?'<span class="chip">尚未出發</span>':'<span class="chip">已結束</span>';
-    const ck=Object.keys(COVERS).find(k=>t.title.includes(k));
-    let cv=t.cover||(ck?COVERS[ck]:"");
-    if(cv&&!/^https:\/\//i.test(cv)&&!/^[\w.\/-]+$/.test(cv))cv="";   // 只接受 https 或同站檔案
-    const bg=cv?`linear-gradient(180deg,rgba(0,0,0,0) 35%,rgba(0,0,0,.55)),url('${encodeURI(cv).replace(/["'()]/g,"")}')`:COLORS[i%COLORS.length];
-    return `<div class="trip-card" data-id="${esc(t.id)}"><div class="trip-cover" style="background-image:${bg}">${esc(t.title)}</div>
+function cardHtml(t,i,done){
+  const d=t.days,st=tripState(t);
+  const badge=done?'<span class="chip">已完成</span>':st==="now"?'<span class="chip" style="background:#10b981;color:#fff">進行中</span>':'<span class="chip">尚未出發</span>';
+  const ck=Object.keys(COVERS).find(k=>t.title.includes(k));
+  let cv=t.cover||(ck?COVERS[ck]:"");
+  if(cv&&!/^https:\/\//i.test(cv)&&!/^[\w.\/-]+$/.test(cv))cv="";   // 只接受 https 或同站檔案
+  const bg=cv?`linear-gradient(180deg,rgba(0,0,0,0) 35%,rgba(0,0,0,.55)),url('${encodeURI(cv).replace(/["'()]/g,"")}')`:COLORS[i%COLORS.length];
+  return `<div class="trip-card${done?" done":""}" data-id="${esc(t.id)}"><div class="trip-cover" style="background-image:${bg}">${esc(t.title)}</div>
     <div class="trip-body">${d.length?`${d[0].date} – ${d[d.length-1].date}・${d.length} 天`:""}<br>
-    ${t.totalTwd?`<span class="chip">預估 NT$${fmt(t.totalTwd)}</span>`:""}${badge}</div></div>`}).join("")||'<div class="empty">還沒有行程</div>';
+    ${t.totalTwd?`<span class="chip">預估 NT$${fmt(t.totalTwd)}</span>`:""}${badge}</div></div>`;
+}
+function renderHome(){
+  const td=todayIso();
+  const start=t=>t.days[0]?t.days[0].iso:"9999-12-31", end=t=>t.days.length?t.days[t.days.length-1].iso:"9999-12-31";
+  const idx=new Map(TRIPS.map((t,i)=>[t,i]));
+  // 進行中 / 即將出發：由時間軸最近的排到最遠；已結束的另列在下方（最近結束的在前）
+  const active=TRIPS.filter(t=>end(t)>=td).sort((x,y)=>start(x).localeCompare(start(y)));
+  const done=TRIPS.filter(t=>end(t)<td).sort((x,y)=>end(y).localeCompare(end(x)));
+  $("tripList").innerHTML=active.map(t=>cardHtml(t,idx.get(t),false)).join("")||(done.length?'<div class="empty">目前沒有進行中或即將出發的行程</div>':'<div class="empty">還沒有行程</div>');
+  $("doneTitle").classList.toggle("hidden",!done.length);
+  $("doneList").innerHTML=done.map(t=>cardHtml(t,idx.get(t),true)).join("");
   document.querySelectorAll(".trip-card").forEach(el=>el.onclick=()=>{location.href=location.pathname+"?t="+encodeURIComponent(el.dataset.id)+"&h=1"});
 }
 function openTrip(id,keepDay){
