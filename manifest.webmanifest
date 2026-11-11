@@ -1,0 +1,17 @@
+{
+  "name": "我的旅程 Trip Planner",
+  "short_name": "我的旅程",
+  "description": "旅程時間軸、地圖與花費整理",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0ea5a4",
+  "theme_color": "#0ea5a4",
+  "lang": "zh-Hant",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
