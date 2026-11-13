@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=2">
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=2">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="theme-color" content="#0ea5a4">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -68,6 +68,18 @@ main{max-width:1200px;margin:0 auto;padding:16px}
 .maplink{position:absolute;left:8px;bottom:26px;background:var(--brand);color:#fff!important;border-radius:999px;padding:6px 12px;font-size:12px;text-decoration:none;box-shadow:0 1px 6px rgba(0,0,0,.35);z-index:2}
 .maptitle{position:absolute;left:8px;top:8px;background:var(--card);border-radius:8px;padding:2px 10px;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.2);pointer-events:none}
 .empty{color:var(--muted);text-align:center;padding:24px}
+
+/* 全程路線圖 */
+.bigmap{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;flex-direction:column}
+.bigmap .bm-head{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--brand);color:#fff}
+.bigmap .bm-head b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bigmap .bm-head button{background:rgba(255,255,255,.2);border:0;color:#fff;padding:6px 12px;border-radius:999px;font-size:14px;cursor:pointer}
+.bm-legend{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--line)}
+.bm-chip{flex:none;border:2px solid var(--c);color:var(--text);background:var(--card);border-radius:999px;padding:3px 10px;font-size:13px;cursor:pointer;white-space:nowrap}
+.bm-chip.on{background:var(--c);color:#fff}
+#bmap{flex:1;min-height:0}
+.bm-msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:500;background:var(--card);padding:10px 16px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.3);font-size:14px}
+.bm-pin{width:26px;height:26px;border-radius:50%;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)}
 </style>
 </head>
 <body>
@@ -82,6 +94,7 @@ main{max-width:1200px;margin:0 auto;padding:16px}
     <h2 id="doneTitle" class="hidden" style="margin-top:28px">已完成</h2><div class="trips" id="doneList"></div></section>
   <section id="trip" class="hidden">
     <div class="summary" id="summary"></div>
+    <div style="margin-bottom:10px"><button class="btn" id="routeMapBtn">🗺 全程路線圖（每天的路徑）</button></div>
     <div class="tabs" id="tabs"></div>
     <div class="layout">
       <div id="day"></div>
@@ -89,6 +102,7 @@ main{max-width:1200px;margin:0 auto;padding:16px}
     </div>
   </section>
 </main>
+<div class="bigmap hidden" id="bigmap"><div class="bm-head"><b id="bmTitle">全程路線圖</b><button id="bmClose">✕ 關閉</button></div><div class="bm-legend" id="bmLegend"></div><div id="bmap"></div></div>
 <div class="foot" id="updated"></div>
 
 <script>
@@ -211,6 +225,67 @@ function selectItem(i){
   $("maptitle").textContent="📍 "+it.title;
   $("map").src=mapEmbed(it.mapQuery);
 }
+
+/* ---------- 全程路線圖（Leaflet + OpenStreetMap；座標由 Apps Script 查好） ---------- */
+const DAY_COLORS=["#e11d48","#7c3aed","#ea580c","#2563eb","#059669","#db2777","#ca8a04","#0891b2","#4d7c0f","#9333ea","#dc2626","#0d9488"];
+let LMAP=null,LGROUPS=[],GEO_CACHE={};
+function loadLeaflet(){
+  if(window.L)return Promise.resolve();
+  return new Promise((ok,bad)=>{
+    const css=document.createElement("link");css.rel="stylesheet";css.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css";document.head.appendChild(css);
+    const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js";s.onload=ok;s.onerror=()=>bad(new Error("地圖元件載入失敗"));document.head.appendChild(s);
+  });
+}
+async function fetchGeo(id,force){
+  const key="trip-planner-geo-v1-"+id;
+  if(!force){const c=readCache(key);if(c&&c.at&&Date.now()-c.at<7*864e5&&!c.data.pending)return c.data}
+  let data=null;
+  for(let n=0;n<6;n++){           // 座標還沒查完時（pending）再要一次
+    const r=await fetch(API_URL+"?geo=1&t="+encodeURIComponent(id),{cache:"no-store"});
+    data=await r.json();
+    if(!data.pending)break;
+  }
+  if(data&&data.days&&!data.pending)try{localStorage.setItem(key,JSON.stringify({at:Date.now(),data}))}catch(e){}
+  return data;
+}
+async function openRouteMap(){
+  $("bigmap").classList.remove("hidden");
+  $("bmTitle").textContent="🗺 "+cur.title+"　全程路線圖";
+  $("bmLegend").innerHTML="";
+  const box=$("bmap");box.innerHTML='<div class="bm-msg" id="bmMsg">正在整理每天的地點座標…（第一次需要幾秒）</div>';
+  let data;
+  try{await loadLeaflet();data=await fetchGeo(cur.id)}catch(e){$("bmMsg").textContent="載入失敗："+e.message;return}
+  if(!data||!data.days){$("bmMsg").textContent="沒有取得資料，請稍後再試";return}
+  if(LMAP){LMAP.remove();LMAP=null}
+  box.innerHTML="";
+  LMAP=L.map("bmap",{zoomControl:true});
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap"}).addTo(LMAP);
+  LGROUPS=[];const all=[];
+  data.days.forEach((d,k)=>{
+    const color=DAY_COLORS[k%DAY_COLORS.length],g=L.layerGroup(),pts=d.stops.map(s=>[s.lat,s.lng]);
+    if(pts.length>1)L.polyline(pts,{color,weight:4,opacity:.85}).addTo(g);
+    d.stops.forEach((s,j)=>{
+      const icon=L.divIcon({className:"",html:`<div class="bm-pin" style="background:${color}">${j+1}</div>`,iconSize:[26,26],iconAnchor:[13,13]});
+      L.marker([s.lat,s.lng],{icon}).bindPopup(`<b>D${k+1}・${j+1}</b> ${esc(s.t)}`).addTo(g);
+      all.push([s.lat,s.lng]);
+    });
+    g.addTo(LMAP);LGROUPS.push({g,pts,on:true,color});
+  });
+  $("bmLegend").innerHTML=`<button class="bm-chip on" style="--c:#475569" data-k="all">全部</button>`+data.days.map((d,k)=>d.stops.length?`<button class="bm-chip on" style="--c:${DAY_COLORS[k%DAY_COLORS.length]}" data-k="${k}">D${k+1} ${esc(d.date)}</button>`:"").join("");
+  const fit=pts=>{if(pts.length){LMAP.invalidateSize();LMAP.fitBounds(pts,{padding:[40,40],maxZoom:14})}};
+  document.querySelectorAll(".bm-chip").forEach(el=>el.onclick=()=>{
+    const k=el.dataset.k;
+    if(k==="all"){LGROUPS.forEach(x=>{x.on=true;x.g.addTo(LMAP)});document.querySelectorAll(".bm-chip").forEach(c=>c.classList.add("on"));fit(all);return}
+    const only=LGROUPS[+k];
+    LGROUPS.forEach(x=>{x.on=(x===only);x.on?x.g.addTo(LMAP):LMAP.removeLayer(x.g)});
+    document.querySelectorAll(".bm-chip").forEach(c=>c.classList.toggle("on",c.dataset.k===k));
+    fit(only.pts);
+  });
+  LMAP.setView(all[0]||[0,0],5);
+  all.length?setTimeout(()=>fit(all),100):box.insertAdjacentHTML("beforeend",'<div class="bm-msg">這份行程還找不到可以標在地圖上的地點</div>');
+}
+$("routeMapBtn").onclick=openRouteMap;
+$("bmClose").onclick=()=>$("bigmap").classList.add("hidden");
 function goHome(){location.href=location.pathname}
 $("homeBtn").onclick=goHome;
 if(!SHARE||FROM_HOME){$("logo").classList.add("link");$("logo").onclick=goHome}
