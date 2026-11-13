@@ -69,17 +69,6 @@ main{max-width:1200px;margin:0 auto;padding:16px}
 .maptitle{position:absolute;left:8px;top:8px;background:var(--card);border-radius:8px;padding:2px 10px;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.2);pointer-events:none}
 .empty{color:var(--muted);text-align:center;padding:24px}
 
-/* 全程路線圖 */
-.bigmap{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;flex-direction:column}
-.bigmap .bm-head{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--brand);color:#fff}
-.bigmap .bm-head b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bigmap .bm-head button{background:rgba(255,255,255,.2);border:0;color:#fff;padding:6px 12px;border-radius:999px;font-size:14px;cursor:pointer}
-.bm-legend{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--line)}
-.bm-chip{flex:none;cursor:default;border:2px solid var(--c);color:var(--text);background:var(--card);border-radius:999px;padding:3px 10px;font-size:13px;cursor:pointer;white-space:nowrap}
-.bm-chip.on{background:var(--c);color:#fff}
-#bmap{flex:1;min-height:0}
-.bm-msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:500;background:var(--card);padding:10px 16px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.3);font-size:14px}
-.bm-pin{width:26px;height:26px;border-radius:50%;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)}
 </style>
 </head>
 <body>
@@ -94,7 +83,6 @@ main{max-width:1200px;margin:0 auto;padding:16px}
     <h2 id="doneTitle" class="hidden" style="margin-top:28px">已完成</h2><div class="trips" id="doneList"></div></section>
   <section id="trip" class="hidden">
     <div class="summary" id="summary"></div>
-    <div style="margin-bottom:10px"><button class="btn" id="routeMapBtn">🗺 全程路線圖（每天的路徑）</button></div>
     <div class="tabs" id="tabs"></div>
     <div class="layout">
       <div id="day"></div>
@@ -102,7 +90,6 @@ main{max-width:1200px;margin:0 auto;padding:16px}
     </div>
   </section>
 </main>
-<div class="bigmap hidden" id="bigmap"><div class="bm-head"><b id="bmTitle">全程路線圖</b><button id="bmClose">✕ 關閉</button></div><div class="bm-legend" id="bmLegend"></div><div id="bmap"></div></div>
 <div class="foot" id="updated"></div>
 
 <script>
@@ -226,95 +213,6 @@ function selectItem(i){
   $("map").src=mapEmbed(it.mapQuery);
 }
 
-/* ---------- 全程路線圖（Leaflet + OpenStreetMap；座標由 Apps Script 查好） ---------- */
-const DAY_COLORS=["#e11d48","#7c3aed","#ea580c","#2563eb","#059669","#db2777","#ca8a04","#0891b2","#4d7c0f","#9333ea","#dc2626","#0d9488"];
-let LMAP=null,LGROUPS=[],GEO_CACHE={};
-function loadLeaflet(){
-  if(window.L)return Promise.resolve();
-  return new Promise((ok,bad)=>{
-    const css=document.createElement("link");css.rel="stylesheet";css.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css";document.head.appendChild(css);
-    const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js";s.onload=ok;s.onerror=()=>bad(new Error("地圖元件載入失敗"));document.head.appendChild(s);
-  });
-}
-async function fetchGeo(id,force){
-  const key="trip-planner-geo-v1-"+id;
-  if(!force){const c=readCache(key);if(c&&c.at&&Date.now()-c.at<7*864e5&&!c.data.pending)return c.data}
-  let data=null;
-  for(let n=0;n<6;n++){           // 座標還沒查完時（pending）再要一次
-    const r=await fetch(API_URL+"?geo=1&t="+encodeURIComponent(id),{cache:"no-store"});
-    data=await r.json();
-    if(!data.pending)break;
-  }
-  if(data&&data.days&&!data.pending)try{localStorage.setItem(key,JSON.stringify({at:Date.now(),data}))}catch(e){}
-  return data;
-}
-async function roadRoute(l,a0,b0){
-  // 起點 → 當天各地點（最多 8 個）→ 落腳處，一次問路線；結果存在瀏覽器，下次不用再問
-  let via=(l.via||[]).filter(p=>Math.abs(p[0]-a0[0])+Math.abs(p[1]-a0[1])>0.002);
-  if(via.length>8)via=via.filter((_,k)=>k%Math.ceil(via.length/8)===0);
-  const pts=[a0,...via,b0],key="trip-planner-road-v1-"+pts.map(p=>p[0].toFixed(3)+","+p[1].toFixed(3)).join(";");
-  const c=readCache(key);if(c)return c.ok?c.pts:null;
-  try{
-    const r=await fetch("https://router.project-osrm.org/route/v1/driving/"+pts.map(p=>p[1]+","+p[0]).join(";")+"?overview=simplified&geometries=geojson",{cache:"force-cache"});
-    const j=await r.json();
-    const rt=j.routes&&j.routes[0];
-    const straight=Math.hypot(b0[0]-a0[0],b0[1]-a0[1])*111000;
-    // 太繞（超過直線距離 4 倍）或找不到路（跨海、飛機）就當作走不通
-    const ok=!!rt&&j.code==="Ok"&&rt.distance<Math.max(straight*4,30000);
-    const out=ok?rt.geometry.coordinates.map(p=>[p[1],p[0]]):null;
-    try{localStorage.setItem(key,JSON.stringify({ok,pts:out}))}catch(e){}
-    return out;
-  }catch(e){return null}
-}
-async function openRouteMap(){
-  $("bigmap").classList.remove("hidden");
-  $("bmTitle").textContent="🗺 "+cur.title+"　全程路線圖";
-  $("bmLegend").innerHTML="";
-  const box=$("bmap");box.innerHTML='<div class="bm-msg" id="bmMsg">正在整理每天的地點座標…（第一次需要幾秒）</div>';
-  let data;
-  try{await loadLeaflet();data=await fetchGeo(cur.id)}catch(e){$("bmMsg").textContent="載入失敗："+e.message;return}
-  if(!data||!data.days){$("bmMsg").textContent="沒有取得資料，請稍後再試";return}
-  if(LMAP){LMAP.remove();LMAP=null}
-  box.innerHTML="";
-  LMAP=L.map("bmap",{zoomControl:true});
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap"}).addTo(LMAP);
-  // 一張總覽圖：Day1 起點 → Day1 落腳處 → Day2 落腳處 …，每天一條線（落腳處 = 當天最後一個地點，通常是住宿）
-  const days=data.days.filter(d=>d.stops.length);
-  const regionOf=d=>{const p=String(d.title||"").split(/\s*[-－→>]\s*/);const r=p[p.length-1].trim();return r&&r.length<=10?r:d.stops[d.stops.length-1].t};
-  const legs=[];let prev={name:days.length?days[0].stops[0].t:"",lat:days.length?days[0].stops[0].lat:0,lng:days.length?days[0].stops[0].lng:0};
-  const nodes=[{...prev,days:[]}];
-  days.forEach(d=>{
-    const last=d.stops[d.stops.length-1],cur2={name:regionOf(d),lat:last.lat,lng:last.lng};
-    const near=Math.abs(cur2.lat-prev.lat)<0.01&&Math.abs(cur2.lng-prev.lng)<0.01;      // 同一個地方（連住）不畫線
-    const color=DAY_COLORS[(d.i)%DAY_COLORS.length];
-    if(!near)legs.push({n:d.i+1,from:prev,to:cur2,color,via:d.stops.slice(0,-1).map(s=>[s.lat,s.lng])});
-    const node=nodes.find(x=>Math.abs(x.lat-cur2.lat)<0.01&&Math.abs(x.lng-cur2.lng)<0.01);
-    if(node){node.days.push(d.i+1);if(node.name.length>cur2.name.length&&cur2.name.length>1)node.name=cur2.name}else nodes.push({...cur2,days:[d.i+1]});
-    prev=cur2;
-  });
-  const all=nodes.map(n=>[n.lat,n.lng]);
-  const badge=(l,pt)=>{if(l.bm)LMAP.removeLayer(l.bm);l.bm=L.marker(pt,{icon:L.divIcon({className:"",html:`<div class="bm-pin" style="background:${l.color}">${l.n}</div>`,iconSize:[26,26],iconAnchor:[13,13]}),zIndexOffset:500}).addTo(LMAP)};
-  // 先畫直線（虛線），再逐段向 OSRM 要「沿道路」的路線換上去；走不通的（飛機、跨海）維持虛線
-  legs.forEach(l=>{
-    const a0=[l.from.lat,l.from.lng],b0=[l.to.lat,l.to.lng];
-    l.line=L.polyline([a0,b0],{color:l.color,weight:4,opacity:.8,dashArray:"8 8"}).addTo(LMAP);
-    badge(l,[(a0[0]+b0[0])/2,(a0[1]+b0[1])/2]);
-    roadRoute(l,a0,b0).then(pts=>{
-      if(!pts||!LMAP)return;
-      LMAP.removeLayer(l.line);
-      l.line=L.polyline(pts,{color:l.color,weight:5,opacity:.9}).addTo(LMAP);
-      badge(l,pts[Math.floor(pts.length/2)]);
-    });
-  });
-  nodes.forEach(n=>{
-    L.circleMarker([n.lat,n.lng],{radius:7,color:"#fff",weight:2,fillColor:"#1f2933",fillOpacity:1}).bindTooltip(esc(n.name)+(n.days.length?`（D${n.days.join("、D")}）`:"（起點）"),{direction:"top",offset:[0,-6]}).addTo(LMAP);
-  });
-  $("bmLegend").innerHTML=legs.map(l=>`<span class="bm-chip on" style="--c:${l.color}">D${l.n}　${esc(l.from.name)} → ${esc(l.to.name)}</span>`).join("");
-  LMAP.setView(all[0]||[0,0],5);
-  all.length?setTimeout(()=>{LMAP.invalidateSize();LMAP.fitBounds(all,{padding:[50,50],maxZoom:12})},100):box.insertAdjacentHTML("beforeend",'<div class="bm-msg">這份行程還找不到可以標在地圖上的地點</div>');
-}
-$("routeMapBtn").onclick=openRouteMap;
-$("bmClose").onclick=()=>$("bigmap").classList.add("hidden");
 function goHome(){location.href=location.pathname}
 $("homeBtn").onclick=goHome;
 if(!SHARE||FROM_HOME){$("logo").classList.add("link");$("logo").onclick=goHome}
