@@ -75,7 +75,7 @@ main{max-width:1200px;margin:0 auto;padding:16px}
 .bigmap .bm-head b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bigmap .bm-head button{background:rgba(255,255,255,.2);border:0;color:#fff;padding:6px 12px;border-radius:999px;font-size:14px;cursor:pointer}
 .bm-legend{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--line)}
-.bm-chip{flex:none;border:2px solid var(--c);color:var(--text);background:var(--card);border-radius:999px;padding:3px 10px;font-size:13px;cursor:pointer;white-space:nowrap}
+.bm-chip{flex:none;cursor:default;border:2px solid var(--c);color:var(--text);background:var(--card);border-radius:999px;padding:3px 10px;font-size:13px;cursor:pointer;white-space:nowrap}
 .bm-chip.on{background:var(--c);color:#fff}
 #bmap{flex:1;min-height:0}
 .bm-msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:500;background:var(--card);padding:10px 16px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.3);font-size:14px}
@@ -260,29 +260,32 @@ async function openRouteMap(){
   box.innerHTML="";
   LMAP=L.map("bmap",{zoomControl:true});
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap"}).addTo(LMAP);
-  LGROUPS=[];const all=[];
-  data.days.forEach((d,k)=>{
-    const color=DAY_COLORS[k%DAY_COLORS.length],g=L.layerGroup(),pts=d.stops.map(s=>[s.lat,s.lng]);
-    if(pts.length>1)L.polyline(pts,{color,weight:4,opacity:.85}).addTo(g);
-    d.stops.forEach((s,j)=>{
-      const icon=L.divIcon({className:"",html:`<div class="bm-pin" style="background:${color}">${j+1}</div>`,iconSize:[26,26],iconAnchor:[13,13]});
-      L.marker([s.lat,s.lng],{icon}).bindPopup(`<b>D${k+1}・${j+1}</b> ${esc(s.t)}`).addTo(g);
-      all.push([s.lat,s.lng]);
-    });
-    g.addTo(LMAP);LGROUPS.push({g,pts,on:true,color});
+  // 一張總覽圖：Day1 起點 → Day1 落腳處 → Day2 落腳處 …，每天一條線（落腳處 = 當天最後一個地點，通常是住宿）
+  const days=data.days.filter(d=>d.stops.length);
+  const regionOf=d=>{const p=String(d.title||"").split(/\s*[-－→>]\s*/);const r=p[p.length-1].trim();return r&&r.length<=10?r:d.stops[d.stops.length-1].t};
+  const legs=[];let prev={name:days.length?days[0].stops[0].t:"",lat:days.length?days[0].stops[0].lat:0,lng:days.length?days[0].stops[0].lng:0};
+  const nodes=[{...prev,days:[]}];
+  days.forEach(d=>{
+    const last=d.stops[d.stops.length-1],cur2={name:regionOf(d),lat:last.lat,lng:last.lng};
+    const near=Math.abs(cur2.lat-prev.lat)<0.01&&Math.abs(cur2.lng-prev.lng)<0.01;      // 同一個地方（連住）不畫線
+    const color=DAY_COLORS[(d.i)%DAY_COLORS.length];
+    if(!near)legs.push({n:d.i+1,from:prev,to:cur2,color});
+    const node=nodes.find(x=>Math.abs(x.lat-cur2.lat)<0.01&&Math.abs(x.lng-cur2.lng)<0.01);
+    if(node){node.days.push(d.i+1);if(node.name.length>cur2.name.length&&cur2.name.length>1)node.name=cur2.name}else nodes.push({...cur2,days:[d.i+1]});
+    prev=cur2;
   });
-  $("bmLegend").innerHTML=`<button class="bm-chip on" style="--c:#475569" data-k="all">全部</button>`+data.days.map((d,k)=>d.stops.length?`<button class="bm-chip on" style="--c:${DAY_COLORS[k%DAY_COLORS.length]}" data-k="${k}">D${k+1} ${esc(d.date)}</button>`:"").join("");
-  const fit=pts=>{if(pts.length){LMAP.invalidateSize();LMAP.fitBounds(pts,{padding:[40,40],maxZoom:14})}};
-  document.querySelectorAll(".bm-chip").forEach(el=>el.onclick=()=>{
-    const k=el.dataset.k;
-    if(k==="all"){LGROUPS.forEach(x=>{x.on=true;x.g.addTo(LMAP)});document.querySelectorAll(".bm-chip").forEach(c=>c.classList.add("on"));fit(all);return}
-    const only=LGROUPS[+k];
-    LGROUPS.forEach(x=>{x.on=(x===only);x.on?x.g.addTo(LMAP):LMAP.removeLayer(x.g)});
-    document.querySelectorAll(".bm-chip").forEach(c=>c.classList.toggle("on",c.dataset.k===k));
-    fit(only.pts);
+  const all=nodes.map(n=>[n.lat,n.lng]);
+  legs.forEach(l=>{
+    L.polyline([[l.from.lat,l.from.lng],[l.to.lat,l.to.lng]],{color:l.color,weight:5,opacity:.9}).addTo(LMAP);
+    const mid=[(l.from.lat+l.to.lat)/2,(l.from.lng+l.to.lng)/2];
+    L.marker(mid,{icon:L.divIcon({className:"",html:`<div class="bm-pin" style="background:${l.color}">${l.n}</div>`,iconSize:[26,26],iconAnchor:[13,13]}),zIndexOffset:500}).addTo(LMAP);
   });
+  nodes.forEach(n=>{
+    L.circleMarker([n.lat,n.lng],{radius:7,color:"#fff",weight:2,fillColor:"#1f2933",fillOpacity:1}).bindTooltip(esc(n.name)+(n.days.length?`（D${n.days.join("、D")}）`:"（起點）"),{permanent:true,direction:"top",offset:[0,-6]}).addTo(LMAP);
+  });
+  $("bmLegend").innerHTML=legs.map(l=>`<span class="bm-chip on" style="--c:${l.color}">D${l.n}　${esc(l.from.name)} → ${esc(l.to.name)}</span>`).join("");
   LMAP.setView(all[0]||[0,0],5);
-  all.length?setTimeout(()=>fit(all),100):box.insertAdjacentHTML("beforeend",'<div class="bm-msg">這份行程還找不到可以標在地圖上的地點</div>');
+  all.length?setTimeout(()=>{LMAP.invalidateSize();LMAP.fitBounds(all,{padding:[50,50],maxZoom:12})},100):box.insertAdjacentHTML("beforeend",'<div class="bm-msg">這份行程還找不到可以標在地圖上的地點</div>');
 }
 $("routeMapBtn").onclick=openRouteMap;
 $("bmClose").onclick=()=>$("bigmap").classList.add("hidden");
