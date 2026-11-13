@@ -248,6 +248,24 @@ async function fetchGeo(id,force){
   if(data&&data.days&&!data.pending)try{localStorage.setItem(key,JSON.stringify({at:Date.now(),data}))}catch(e){}
   return data;
 }
+async function roadRoute(l,a0,b0){
+  // 起點 → 當天各地點（最多 8 個）→ 落腳處，一次問路線；結果存在瀏覽器，下次不用再問
+  let via=(l.via||[]).filter(p=>Math.abs(p[0]-a0[0])+Math.abs(p[1]-a0[1])>0.002);
+  if(via.length>8)via=via.filter((_,k)=>k%Math.ceil(via.length/8)===0);
+  const pts=[a0,...via,b0],key="trip-planner-road-v1-"+pts.map(p=>p[0].toFixed(3)+","+p[1].toFixed(3)).join(";");
+  const c=readCache(key);if(c)return c.ok?c.pts:null;
+  try{
+    const r=await fetch("https://router.project-osrm.org/route/v1/driving/"+pts.map(p=>p[1]+","+p[0]).join(";")+"?overview=simplified&geometries=geojson",{cache:"force-cache"});
+    const j=await r.json();
+    const rt=j.routes&&j.routes[0];
+    const straight=Math.hypot(b0[0]-a0[0],b0[1]-a0[1])*111000;
+    // 太繞（超過直線距離 4 倍）或找不到路（跨海、飛機）就當作走不通
+    const ok=!!rt&&j.code==="Ok"&&rt.distance<Math.max(straight*4,30000);
+    const out=ok?rt.geometry.coordinates.map(p=>[p[1],p[0]]):null;
+    try{localStorage.setItem(key,JSON.stringify({ok,pts:out}))}catch(e){}
+    return out;
+  }catch(e){return null}
+}
 async function openRouteMap(){
   $("bigmap").classList.remove("hidden");
   $("bmTitle").textContent="🗺 "+cur.title+"　全程路線圖";
@@ -269,19 +287,27 @@ async function openRouteMap(){
     const last=d.stops[d.stops.length-1],cur2={name:regionOf(d),lat:last.lat,lng:last.lng};
     const near=Math.abs(cur2.lat-prev.lat)<0.01&&Math.abs(cur2.lng-prev.lng)<0.01;      // 同一個地方（連住）不畫線
     const color=DAY_COLORS[(d.i)%DAY_COLORS.length];
-    if(!near)legs.push({n:d.i+1,from:prev,to:cur2,color});
+    if(!near)legs.push({n:d.i+1,from:prev,to:cur2,color,via:d.stops.slice(0,-1).map(s=>[s.lat,s.lng])});
     const node=nodes.find(x=>Math.abs(x.lat-cur2.lat)<0.01&&Math.abs(x.lng-cur2.lng)<0.01);
     if(node){node.days.push(d.i+1);if(node.name.length>cur2.name.length&&cur2.name.length>1)node.name=cur2.name}else nodes.push({...cur2,days:[d.i+1]});
     prev=cur2;
   });
   const all=nodes.map(n=>[n.lat,n.lng]);
+  const badge=(l,pt)=>{if(l.bm)LMAP.removeLayer(l.bm);l.bm=L.marker(pt,{icon:L.divIcon({className:"",html:`<div class="bm-pin" style="background:${l.color}">${l.n}</div>`,iconSize:[26,26],iconAnchor:[13,13]}),zIndexOffset:500}).addTo(LMAP)};
+  // 先畫直線（虛線），再逐段向 OSRM 要「沿道路」的路線換上去；走不通的（飛機、跨海）維持虛線
   legs.forEach(l=>{
-    L.polyline([[l.from.lat,l.from.lng],[l.to.lat,l.to.lng]],{color:l.color,weight:5,opacity:.9}).addTo(LMAP);
-    const mid=[(l.from.lat+l.to.lat)/2,(l.from.lng+l.to.lng)/2];
-    L.marker(mid,{icon:L.divIcon({className:"",html:`<div class="bm-pin" style="background:${l.color}">${l.n}</div>`,iconSize:[26,26],iconAnchor:[13,13]}),zIndexOffset:500}).addTo(LMAP);
+    const a0=[l.from.lat,l.from.lng],b0=[l.to.lat,l.to.lng];
+    l.line=L.polyline([a0,b0],{color:l.color,weight:4,opacity:.8,dashArray:"8 8"}).addTo(LMAP);
+    badge(l,[(a0[0]+b0[0])/2,(a0[1]+b0[1])/2]);
+    roadRoute(l,a0,b0).then(pts=>{
+      if(!pts||!LMAP)return;
+      LMAP.removeLayer(l.line);
+      l.line=L.polyline(pts,{color:l.color,weight:5,opacity:.9}).addTo(LMAP);
+      badge(l,pts[Math.floor(pts.length/2)]);
+    });
   });
   nodes.forEach(n=>{
-    L.circleMarker([n.lat,n.lng],{radius:7,color:"#fff",weight:2,fillColor:"#1f2933",fillOpacity:1}).bindTooltip(esc(n.name)+(n.days.length?`（D${n.days.join("、D")}）`:"（起點）"),{permanent:true,direction:"top",offset:[0,-6]}).addTo(LMAP);
+    L.circleMarker([n.lat,n.lng],{radius:7,color:"#fff",weight:2,fillColor:"#1f2933",fillOpacity:1}).bindTooltip(esc(n.name)+(n.days.length?`（D${n.days.join("、D")}）`:"（起點）"),{direction:"top",offset:[0,-6]}).addTo(LMAP);
   });
   $("bmLegend").innerHTML=legs.map(l=>`<span class="bm-chip on" style="--c:${l.color}">D${l.n}　${esc(l.from.name)} → ${esc(l.to.name)}</span>`).join("");
   LMAP.setView(all[0]||[0,0],5);
